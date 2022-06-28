@@ -252,7 +252,8 @@ export class Builder {
                 },
                 'icon': config.win.icon ? pathResolve(this.dir, config.win.icon) : undefined,
             };
-
+            console.dir(rc);
+            console.dir({nw: path, icon:  pathResolve(this.dir, config.win.icon)})
             rcedit(path, rc, (err: Error) => err ? reject(err) : resolve());
 
         });
@@ -593,7 +594,8 @@ export class Builder {
 
             icon: config.nsis.icon ? resolve(this.dir, config.nsis.icon) : undefined,
             unIcon: config.nsis.unIcon ? resolve(this.dir, config.nsis.unIcon) : undefined,
-
+            menuName: config.nsis.menuName,
+            internetShortcut: config.nsis.internetShortcut,
             // Compression.
             compression: 'lzma',
             solid: true,
@@ -725,7 +727,8 @@ export class Builder {
 
             icon: config.nsis.icon ? resolve(this.dir, config.nsis.icon) : undefined,
             unIcon: config.nsis.unIcon ? resolve(this.dir, config.nsis.unIcon) : undefined,
-
+            menuName: config.nsis.menuName,
+            internetShortcut: config.nsis.internetShortcut,
             // Compression.
             compression: 'lzma',
             solid: true,
@@ -790,6 +793,9 @@ export class Builder {
 
             icon: config.nsis.icon ? resolve(this.dir, config.nsis.icon) : undefined,
             unIcon: config.nsis.unIcon ? resolve(this.dir, config.nsis.unIcon) : undefined,
+            
+            menuName: config.nsis.menuName,
+            internetShortcut: config.nsis.internetShortcut,
 
             // Compression.
             compression: 'lzma',
@@ -803,14 +809,15 @@ export class Builder {
 
         })).make();
 
-        const script = await tmpName();
+        //const script = await tmpName();
+        const script = resolve(dirname(sourceDir), `${ basename(sourceDir) }-script.nsi`);
         await writeFile(script, data);
 
         await nsisBuild(sourceDir, script, {
             mute: this.options.mute,
         });
 
-        await remove(script);
+        //await remove(script);
 
         await versionInfo.addVersion(pkg.version, '', sourceDir);
         await versionInfo.addInstaller(pkg.version, arch, targetNsis);

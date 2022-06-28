@@ -14,6 +14,9 @@ export interface INsisComposerOptions {
     version: string;
     copyright: string;
 
+    menuName: string;
+    internetShortcut: string[];
+
     icon: string;
     unIcon: string;
 
@@ -36,7 +39,7 @@ export class NsisComposer {
 
     public static STRINGS: any = {
         'English': `
-LangString CREATE_DESKTOP_SHORTCUT 1033 "Create Desktop Shortcut"
+LangString CREATE_DESKTOP_SHORTCUT 1033 "创建桌面快捷方式"
 LangString INSTALLING 1033 "Installing"
         `,
         'SimpChinese': `
@@ -64,6 +67,15 @@ LangString INSTALLING 1031 "Installiere"
         if(!this.options.appName) {
             this.options.appName = 'NO_APPNAME';
         }
+
+        if(!this.options.menuName) {
+            this.options.menuName = 'NO_MENUNAME';
+        }
+
+        if (!this.options.internetShortcut) {
+            this.options.internetShortcut = []
+        }
+
 
         if(!this.options.companyName) {
             this.options.companyName = 'NO_COMPANYNAME';
@@ -121,6 +133,7 @@ ${ await this.makeUninstallSection() }`;
 ${ NsisComposer.DIVIDER }
 
 !define _APPNAME "${ this.options.appName }"
+!define _MENUNAME "${ this.options.menuName }"
 !define _COMPANYNAME "${ this.options.companyName }"
 !define _DESCRIPTION "${ this.options.description }"
 !define _VERSION "${ this.fixedVersion }"
@@ -141,8 +154,8 @@ ${ NsisComposer.DIVIDER }
 
 Unicode true
 
-Name "\${_APPNAME}"
-Caption "\${_APPNAME}"
+Name "\${_MENUNAME}"
+Caption "\${_MENUNAME}"
 BrandingText "\${_APPNAME} \${_VERSION}"
 ${
     this.options.icon
@@ -161,8 +174,19 @@ OutFile "\${_OUTPUT}"
 InstallDir "${ this.options.installDirectory }"
 InstallDirRegKey HKCU "Software\\\${_APPNAME}" "InstallDir"
 
-RequestExecutionLevel user
-XPStyle on`;
+RequestExecutionLevel admin
+XPStyle on
+
+!include LogicLib.nsh
+!macro VerifyUserIsAdmin
+UserInfo::GetAccountType
+pop $0
+\${If} $0 != "admin" ;Require admin rights on NT4+
+    messageBox mb_iconstop "必须以管理员权限运行!"
+    setErrorLevel 740 ;ERROR_ELEVATION_REQUIRED
+    quit
+\${EndIf}
+!macroend`;
     }
 
     protected async makeModernUI(): Promise<string> {
@@ -173,9 +197,10 @@ XPStyle on`;
 ${ NsisComposer.DIVIDER }
 
 !include "MUI2.nsh"
+!include "WinVer.nsh"
 
 Function CreateDesktopShortcut
-    CreateShortcut "$DESKTOP\\\${_APPNAME}.lnk" "$INSTDIR\\\${_APPNAME}.exe"
+    CreateShortcut "$DESKTOP\\\${_MENUNAME}.lnk" "$INSTDIR\\\${_APPNAME}.exe"
 FunctionEnd
 
 !define MUI_STARTMENUPAGE_REGISTRY_ROOT "HKCU"
@@ -183,16 +208,17 @@ FunctionEnd
 !define MUI_STARTMENUPAGE_REGISTRY_VALUENAME "StartMenuFolder"
 
 !define MUI_FINISHPAGE_SHOWREADME ""
-!define MUI_FINISHPAGE_SHOWREADME_TEXT "$(CREATE_DESKTOP_SHORTCUT)"
+!define MUI_FINISHPAGE_SHOWREADME_TEXT "创建桌面快捷方式"
 !define MUI_FINISHPAGE_SHOWREADME_FUNCTION CreateDesktopShortcut
 
 Var StartMenuFolder
 
 !define MUI_FINISHPAGE_RUN "$INSTDIR\\\${_APPNAME}.exe"
+!define MUI_STARTMENUPAGE_DEFAULTFOLDER "\${_MENUNAME}"
 
 !insertmacro MUI_PAGE_WELCOME
 !insertmacro MUI_PAGE_DIRECTORY
-!insertmacro MUI_PAGE_STARTMENU "Application" $StartMenuFolder
+!insertmacro MUI_PAGE_STARTMENU 0 $StartMenuFolder
 !insertmacro MUI_PAGE_INSTFILES
 !insertmacro MUI_PAGE_FINISH
 
@@ -203,7 +229,7 @@ Var StartMenuFolder
 
 ${
     this.options.languages.map((language) => {
-        return `!insertmacro MUI_LANGUAGE "${ language }"`;
+        return `!insertmacro MUI_LANGUAGE "SimpChinese"`;
     }).join('\n')
 }
 
@@ -243,7 +269,12 @@ Function .onInit
         ? `!insertmacro MUI_LANGDLL_DISPLAY`
         : ''
     }
-
+    \${Unless} \${AtLeastWin7}
+        messageBox mb_iconstop " 当前操作系统版本不支持，必须使用Win7及以上版本操作系统安装！"  
+        Abort
+    \${EndUnless}
+    !insertmacro VerifyUserIsAdmin
+    NoAbort:
 FunctionEnd`;
     }
 
@@ -263,10 +294,15 @@ WriteRegStr HKCU "Software\\\${_APPNAME}" "InstallDir" "$INSTDIR"
 
 ${ await this.makeInstallerFiles() }
 
-!insertmacro MUI_STARTMENU_WRITE_BEGIN "Application"
+!insertmacro MUI_STARTMENU_WRITE_BEGIN 0
 
     CreateDirectory "$SMPROGRAMS\\$StartMenuFolder"
-    CreateShortcut "$SMPROGRAMS\\$StartMenuFolder\\\${_APPNAME}.lnk" "$INSTDIR\\\${_APPNAME}.exe"
+    CreateShortcut "$SMPROGRAMS\\$StartMenuFolder\\\${_MENUNAME}.lnk" "$INSTDIR\\\${_APPNAME}.exe"
+    ${
+        this.options.internetShortcut.map((links) => {
+            return `WriteINIStr "$SMPROGRAMS\\$StartMenuFolder\\${links[0]}.URL" "InternetShortcut" "URL" "${links[1]}"`;
+        }).join('\n')
+    }
     CreateShortcut "$SMPROGRAMS\\$StartMenuFolder\\Uninstall.lnk" "$INSTDIR\\Uninstall.exe"
 
 !insertmacro MUI_STARTMENU_WRITE_END
@@ -288,13 +324,18 @@ Section Uninstall
 # FIXME: Remove installed files only.
 RMDir /r "$INSTDIR"
 
-!insertmacro MUI_STARTMENU_GETFOLDER "Application" $StartMenuFolder
+!insertmacro MUI_STARTMENU_GETFOLDER 0 $StartMenuFolder
 
-Delete "$SMPROGRAMS\\$StartMenuFolder\\\${_APPNAME}.lnk"
+Delete "$SMPROGRAMS\\$StartMenuFolder\\\${_MENUNAME}.lnk"
+${
+    this.options.internetShortcut.map((links) => {
+        return `Delete "$SMPROGRAMS\\$StartMenuFolder\\${links[0]}.URL"`;
+    }).join('\n')
+}
 Delete "$SMPROGRAMS\\$StartMenuFolder\\Uninstall.lnk"
 RMDir "$SMPROGRAMS\\$StartMenuFolder"
 
-Delete "$DESKTOP\\\${_APPNAME}.lnk"
+Delete "$DESKTOP\\\${_MENUNAME}.lnk"
 
 DeleteRegKey HKCU "Software\\\${_APPNAME}"
 

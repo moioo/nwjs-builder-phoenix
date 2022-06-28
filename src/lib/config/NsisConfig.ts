@@ -4,7 +4,11 @@ export class NsisConfig {
     public icon: string = undefined;
     public unIcon: string = undefined;
 
-    public languages: string[] = [ 'English' ];
+    public menuName: string = undefined;
+
+    public languages: string[] = ['English'];
+    
+    public internetShortcut: string[] = [];
 
     public installDirectory: string = '$LOCALAPPDATA\\${_APPNAME}';
 
